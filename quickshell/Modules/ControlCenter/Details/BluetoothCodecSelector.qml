@@ -6,11 +6,9 @@ import qs.Widgets
 Item {
     id: root
 
-    LayoutMirroring.enabled: I18n.isRtl
-    LayoutMirroring.childrenInherit: true
+    anchors.fill: parent
 
     property var device: null
-    property bool modalVisible: false
     property var parentItem
     property var availableCodecs: []
     property string currentCodec: ""
@@ -19,6 +17,7 @@ Item {
     property bool statusIsError: false
 
     readonly property bool deviceValid: device !== null && device.connected && BluetoothService.isAudioDevice(device)
+    readonly property alias modalVisible: overlay.modalVisible
 
     signal codecSelected(string deviceAddress, string codecName)
 
@@ -33,20 +32,13 @@ Item {
         currentCodec = "";
         statusMessage = "";
         statusIsError = false;
-        visible = true;
-        modalVisible = true;
+
+        overlay.open();
         queryCodecs();
-        Qt.callLater(() => {
-            focusScope.forceActiveFocus();
-        });
     }
 
     function hide() {
-        modalVisible = false;
-        Qt.callLater(() => {
-            visible = false;
-            device = null;
-        });
+        overlay.close();
     }
 
     function queryCodecs() {
@@ -88,9 +80,6 @@ Item {
         if (!selectedCodec)
             return;
 
-        BluetoothService.updateDeviceCodec(capturedAddress, selectedCodec.name);
-        codecSelected(capturedAddress, selectedCodec.name);
-
         isLoading = true;
         BluetoothService.switchCodec(capturedDevice, profileName, function (success, message) {
             if (!root.device || root.device.address !== capturedAddress)
@@ -98,6 +87,8 @@ Item {
 
             isLoading = false;
             if (success) {
+                BluetoothService.updateDeviceCodec(capturedAddress, selectedCodec.name);
+                root.codecSelected(capturedAddress, selectedCodec.name);
                 ToastService.showToast(message, ToastService.levelInfo);
                 Qt.callLater(root.hide);
                 return;
@@ -107,247 +98,154 @@ Item {
     }
 
     onDeviceValidChanged: {
-        if (modalVisible && !deviceValid) {
-            hide();
-        }
+        if (overlay.modalVisible && !deviceValid)
+            overlay.close();
     }
 
-    visible: false
-    anchors.fill: parent
-    z: 2000
+    DetailOverlayModal {
+        id: overlay
 
-    MouseArea {
-        id: modalBlocker
-        anchors.fill: parent
-        visible: modalVisible
-        enabled: modalVisible
-        hoverEnabled: true
-        preventStealing: true
-        propagateComposedEvents: false
+        onClosed: root.device = null
 
-        onClicked: root.hide()
-        onWheel: wheel => {
-            wheel.accepted = true;
-        }
-        onPositionChanged: mouse => {
-            mouse.accepted = true;
-        }
-    }
-
-    Rectangle {
-        id: modalBackground
-        anchors.fill: parent
-        color: Qt.rgba(0, 0, 0, BlurService.enabled ? 0.72 : 0.5)
-        opacity: modalVisible ? 1 : 0
-
-        Behavior on opacity {
-            NumberAnimation {
-                duration: Theme.mediumDuration
-                easing.type: Theme.emphasizedEasing
-            }
-        }
-    }
-
-    FocusScope {
-        id: focusScope
-
-        anchors.fill: parent
-        focus: root.visible
-        enabled: root.visible
-
-        Keys.onEscapePressed: event => {
-            root.hide();
-            event.accepted = true;
-        }
-    }
-
-    Rectangle {
-        id: modalContent
-        anchors.centerIn: parent
-        width: 320
-        height: contentColumn.implicitHeight + Theme.spacingL * 2
-        radius: Theme.cornerRadius
-        color: Theme.withAlpha(Theme.surfaceContainer, BlurService.enabled ? 0.96 : Theme.popupTransparency)
-        border.color: BlurService.enabled ? BlurService.borderColor : Theme.outlineMedium
-        border.width: BlurService.enabled ? BlurService.borderWidth : Theme.layerOutlineWidth
-        opacity: modalVisible ? 1 : 0
-        scale: modalVisible ? 1 : 0.9
-
-        MouseArea {
-            anchors.fill: parent
-            hoverEnabled: true
-            preventStealing: true
-            propagateComposedEvents: false
-            onClicked: mouse => {
-                mouse.accepted = true;
-            }
-            onWheel: wheel => {
-                wheel.accepted = true;
-            }
-            onPositionChanged: mouse => {
-                mouse.accepted = true;
-            }
-        }
-
-        Column {
-            id: contentColumn
-
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.margins: Theme.spacingL
+        Row {
+            width: parent.width
             spacing: Theme.spacingM
 
-            Row {
-                width: parent.width
-                spacing: Theme.spacingM
-
-                DankIcon {
-                    name: device ? BluetoothService.getDeviceIcon(device) : "headset"
-                    size: Theme.iconSize + 4
-                    color: Theme.primary
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-
-                Column {
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: Theme.spacingXXS
-
-                    StyledText {
-                        text: device ? (device.name || device.deviceName) : ""
-                        font.pixelSize: Theme.fontSizeLarge
-                        color: Theme.surfaceText
-                        font.weight: Font.Medium
-                    }
-
-                    StyledText {
-                        text: I18n.tr("Audio Codec Selection")
-                        font.pixelSize: Theme.fontSizeSmall
-                        color: Theme.surfaceTextMedium
-                    }
-                }
-            }
-
-            Rectangle {
-                width: parent.width
-                height: 1
-                color: Theme.outlineLight
-            }
-
-            StyledText {
-                text: {
-                    if (isLoading)
-                        return I18n.tr("Loading codecs...");
-                    if (statusMessage.length > 0)
-                        return statusMessage;
-                    return I18n.tr("Current: %1").arg(currentCodec);
-                }
-                font.pixelSize: Theme.fontSizeSmall
-                color: statusIsError ? Theme.error : (isLoading ? Theme.primary : Theme.surfaceTextMedium)
-                font.weight: Font.Medium
-                wrapMode: Text.WordWrap
-                width: parent.width
+            DankIcon {
+                name: root.device ? BluetoothService.getDeviceIcon(root.device) : "headset"
+                size: Theme.iconSize + 4
+                color: Theme.primary
+                anchors.verticalCenter: parent.verticalCenter
             }
 
             Column {
-                width: parent.width
-                spacing: Theme.spacingXS
-                visible: !isLoading && availableCodecs.length > 0
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: Theme.spacingXXS
 
-                Repeater {
-                    model: availableCodecs
+                StyledText {
+                    text: root.device ? (root.device.name || root.device.deviceName) : ""
+                    font.pixelSize: Theme.fontSizeLarge
+                    color: Theme.surfaceText
+                    font.weight: Font.Medium
+                }
 
-                    Rectangle {
-                        width: parent.width
-                        height: 48
-                        radius: Theme.cornerRadius
-                        color: {
-                            if (modelData.name === currentCodec)
-                                return Theme.withAlpha(Theme.surfaceContainerHighest, Theme.popupTransparency);
-                            else if (codecMouseArea.containsMouse)
-                                return Theme.surfaceHover;
-                            else
-                                return "transparent";
-                        }
-                        border.color: "transparent"
-                        border.width: 0
-
-                        Row {
-                            anchors.left: parent.left
-                            anchors.leftMargin: Theme.spacingM
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: Theme.spacingS
-
-                            Rectangle {
-                                width: 6
-                                height: 6
-                                radius: 3
-                                color: modelData.qualityColor
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-
-                            Column {
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: Theme.spacingXXS
-
-                                StyledText {
-                                    text: modelData.name
-                                    font.pixelSize: Theme.fontSizeMedium
-                                    color: modelData.name === currentCodec ? Theme.primary : Theme.surfaceText
-                                    font.weight: modelData.name === currentCodec ? Font.Medium : Font.Normal
-                                }
-
-                                StyledText {
-                                    text: modelData.description
-                                    font.pixelSize: Theme.fontSizeSmall
-                                    color: Theme.surfaceTextMedium
-                                }
-                            }
-                        }
-
-                        DankIcon {
-                            name: "check"
-                            size: Theme.iconSize - 4
-                            color: Theme.primary
-                            anchors.right: parent.right
-                            anchors.rightMargin: Theme.spacingM
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: modelData.name === currentCodec
-                        }
-
-                        DankRipple {
-                            id: codecRipple
-                            cornerRadius: parent.radius
-                        }
-
-                        MouseArea {
-                            id: codecMouseArea
-
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            enabled: modelData.name !== currentCodec && !isLoading
-                            onPressed: mouse => codecRipple.trigger(mouse.x, mouse.y)
-                            onClicked: {
-                                selectCodec(modelData.profile);
-                            }
-                        }
-                    }
+                StyledText {
+                    text: I18n.tr("Audio Codec Selection")
+                    font.pixelSize: Theme.fontSizeSmall
+                    color: Theme.surfaceTextMedium
                 }
             }
         }
 
-        Behavior on opacity {
-            NumberAnimation {
-                duration: Theme.mediumDuration
-                easing.type: Theme.emphasizedEasing
-            }
+        Rectangle {
+            width: parent.width
+            height: 1
+            color: Theme.outlineLight
         }
 
-        Behavior on scale {
-            NumberAnimation {
-                duration: Theme.mediumDuration
-                easing.type: Theme.emphasizedEasing
+        StyledText {
+            text: {
+                if (root.isLoading)
+                    return I18n.tr("Loading codecs...");
+                if (root.statusMessage.length > 0)
+                    return root.statusMessage;
+                return I18n.tr("Current: %1").arg(root.currentCodec);
+            }
+            font.pixelSize: Theme.fontSizeSmall
+            color: root.statusIsError ? Theme.error : (root.isLoading ? Theme.primary : Theme.surfaceTextMedium)
+            font.weight: Font.Medium
+            wrapMode: Text.WordWrap
+            width: parent.width
+        }
+
+        Column {
+            width: parent.width
+            spacing: Theme.spacingXS
+            visible: root.availableCodecs.length > 0
+
+            Repeater {
+                model: root.availableCodecs
+
+                Rectangle {
+                    required property var modelData
+
+                    readonly property bool isCurrent: modelData.name === root.currentCodec
+
+                    width: parent.width
+                    height: 48
+                    radius: Theme.cornerRadius
+                    color: {
+                        if (isCurrent)
+                            return Theme.withAlpha(Theme.surfaceContainerHighest, Theme.popupTransparency);
+                        else if (codecMouseArea.containsMouse)
+                            return Theme.surfaceHover;
+                        else
+                            return "transparent";
+                    }
+                    border.color: "transparent"
+                    border.width: 0
+
+                    Row {
+                        anchors.left: parent.left
+                        anchors.leftMargin: Theme.spacingM
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: Theme.spacingS
+
+                        Rectangle {
+                            width: 6
+                            height: 6
+                            radius: 3
+                            color: modelData.qualityColor
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: Theme.spacingXXS
+
+                            StyledText {
+                                text: modelData.name
+                                font.pixelSize: Theme.fontSizeMedium
+                                color: isCurrent ? Theme.primary : Theme.surfaceText
+                                font.weight: isCurrent ? Font.Medium : Font.Normal
+                            }
+
+                            StyledText {
+                                text: modelData.description
+                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.surfaceTextMedium
+                            }
+                        }
+                    }
+
+                    DankIcon {
+                        name: "check"
+                        size: Theme.iconSize - 4
+                        color: Theme.primary
+                        anchors.right: parent.right
+                        anchors.rightMargin: Theme.spacingM
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: isCurrent
+                    }
+
+                    DankRipple {
+                        id: codecRipple
+                        cornerRadius: parent.radius
+                    }
+
+                    MouseArea {
+                        id: codecMouseArea
+
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        enabled: !isCurrent && !root.isLoading
+                        onPressed: mouse => codecRipple.trigger(mouse.x, mouse.y)
+                        onClicked: {
+                            root.selectCodec(modelData.profile);
+                        }
+                    }
+                }
             }
         }
     }
