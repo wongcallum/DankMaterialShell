@@ -441,7 +441,7 @@ Singleton {
         property string detectedCodec: ""
         property var availableCodecs: []
 
-        command: ["pactl", "list", "cards"]
+        command: ["env", "LC_ALL=C", "pactl", "list", "cards"]
 
         onExited: (exitCode, exitStatus) => {
             if (exitCode === 0 && detectedCodec) {
@@ -524,7 +524,7 @@ Singleton {
         property string detectedCodec: ""
         property var availableCodecs: []
 
-        command: ["pactl", "list", "cards"]
+        command: ["env", "LC_ALL=C", "pactl", "list", "cards"]
 
         onExited: function (exitCode, exitStatus) {
             if (callback) {
@@ -596,7 +596,7 @@ Singleton {
         property string profile: ""
         property var callback: null
 
-        command: ["pactl", "set-card-profile", cardName, profile]
+        command: ["env", "LC_ALL=C", "pactl", "set-card-profile", cardName, profile]
 
         onExited: function (exitCode, exitStatus) {
             if (callback) {
